@@ -1,0 +1,136 @@
+//
+// Created by andre on 10/01/2018.
+//
+#include <iostream>
+#include <algorithm>
+#include "sequenzaRNA.h"
+
+/************seqRNA************/
+//Ridefinizione di operator<<
+std::ostream& operator<<(std::ostream& os, const seqRNA& r) {
+    if(&r == nullptr)
+            return os << "ma la madonna puttana smettila";
+    for(auto i : r.getElems())
+        os << i->getAcr().toUtf8().constData();
+    return os;
+}
+
+//Costruttore
+seqRNA::seqRNA(QVector<Nucleotide *> e, bool i, const seqDNA* o) : Polimero(std::move(e)), _isSense(i), _seqOrigin(o) {
+        updateInfo();
+}
+
+//Distruttore profondo
+seqRNA::~seqRNA() {
+}
+
+//Costruttore di copia profonda
+seqRNA::seqRNA(const seqRNA &r) : Polimero() { //mi limito a creare il sottooggetto vuoto, i cui campi andrò a riempire in seguito
+    for(auto i : r.getElems())
+       addElem(*i);
+    updateInfo();
+}
+
+
+//Metodi di get
+const seqDNA* seqRNA::getSeqOrigin() const {
+    if(!_seqOrigin || _seqOrigin->getElems().size() == 0)
+        return nullptr; //exception!
+    return _seqOrigin;
+}
+
+bool seqRNA::getIsSense() const {
+    return _isSense;
+}
+
+//Metodi di set
+void seqRNA::setIsSense(const bool& newSense) {
+    _isSense = newSense;
+}
+
+//Metodi di calcolo
+bool seqRNA::validate(const Nucleotide & n) const {
+    return std::find(codiceRNA.begin(), codiceRNA.end(), n) != codiceRNA.end();
+}
+
+seqDNA* seqRNA::toDNA() {
+    QVector<Nucleotide *> _toDNAelems;
+    _toDNAelems.reserve(getElems().size());
+    for(auto i : getElems())
+        for(auto j : seqDNA::codiceDNA)
+            if( j.getAcr() == i->getComp() )
+                _toDNAelems.push_back(j.clone());
+    return new seqDNA(_toDNAelems, !_isSense);
+}
+
+Proteina* seqRNA::toProtein() {
+    QVector<Amminoacido*> _toProElems;
+    int start = gencode::START.findInSequence(getElems());
+    if(!start)    {
+        std::cout << "sequenza non codificante";
+        return nullptr; //sequenza non codificante
+    }
+    int currPos = start-1;
+    int elemsLeft = getElems().size();
+    bool stop = false;
+    auto it1 = (getElems().begin() + currPos);
+    for(; elemsLeft>2; it1+=3, currPos+=3,  elemsLeft-=3) {
+        bool found = false;
+        stop = false;
+        for(auto it2 = Proteina::codicePro.begin(); it2 != Proteina::codicePro.end() && !(found || stop); ++it2) {
+            QVector<Nucleotide*> currSeq = getElems().mid(currPos, 3);
+            if(it2->findInSequence(currSeq)) {
+                if(!found) {
+                    found = true;
+                    _toProElems.push_back(it2->clone());
+                }  else if (gencode::STOP.findInSequence(getElems()) == it2->findInSequence(getElems())) {
+                    stop = true;
+                }
+            }
+        }
+    }
+    return new Proteina(_toProElems);
+}
+
+//Metodi di manipolazione
+void seqRNA::addElem(const Nucleotide &elAgg) {
+    QVector<Nucleotide*> newVec = getElems();
+    if(!validate(elAgg))
+        std::cout<< "elemento invalido";
+        //lancia eccezione
+    newVec.push_back(elAgg.clone());
+    setElems(newVec);
+    updateInfo();
+}
+
+void seqRNA::delElem() {
+    if (!this || !(this->getElems().size()))
+        //LANCIA ECCEZIUNALEVERAMENTE
+        std::cout << "nah, bro" << std::endl;
+    QVector<Nucleotide *> newVec = getElems();
+    QVector<Nucleotide *>::iterator lastEl = newVec.end()-1;
+    delete *lastEl;
+    newVec.pop_back();
+    setElems(newVec);
+    updateInfo();
+}
+
+void seqRNA::concat(const seqRNA& s) {
+    QVector<Nucleotide*> concElems = getElems();
+    for(auto i : s.getElems())
+       addElem(*i);
+    updateInfo();
+}
+
+void seqRNA::splicing (unsigned int ind1, unsigned int ind2)  {
+    QVector<Nucleotide *> result = getElems();
+    if(ind1 >= ind2 || ind1 >= static_cast<unsigned int>(result.size()) || ind2 >= static_cast<unsigned int>(result.size()))
+        std::cout << "indici non validi" << std::endl; //throw exception
+    result.erase(result.begin()+ind1-1, result.begin()+ind2);
+    setElems(result);
+    updateInfo();
+}
+
+/*DEFINIZIONE CAMPI E METODI STATICI*/
+//inizializzo nucleotidi di default
+QVector<Nucleotide> seqRNA::codiceRNA = {gencode::rna_A, gencode::rna_C, gencode::rna_G, gencode::rna_U};
